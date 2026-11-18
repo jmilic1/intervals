@@ -1,14 +1,16 @@
+
 <script lang="ts">
-    import { ANSWERS, type AnswerId, type FamilyId, type Feedback } from './intervals';
+    import { ANSWERS, type AnswerId, type Feedback } from './intervals';
 
     interface Props {
-        enabled: Record<FamilyId, boolean>;
+        // The answers that can come up right now. The rest are disabled.
+        allowed: AnswerId[];
         phase: 'idle' | 'asking' | 'answered';
         feedback: Feedback | null;
         onpick: (id: AnswerId) => void;
     }
 
-    let { enabled, phase, feedback, onpick }: Props = $props();
+    let { allowed, phase, feedback, onpick }: Props = $props();
 
     // Laid out 5 / 3 / 5. The middle row holds the fourth, tritone and fifth,
     // and the tritone (6 semitones) lands in the exact center, just like it
@@ -33,7 +35,7 @@
                 <button
                         type="button"
                         class="item {flashClass(answer.id)}"
-                        disabled={phase === 'idle' || !enabled[answer.family]}
+                        disabled={phase === 'idle' || !allowed.includes(answer.id)}
                         aria-disabled={phase === 'answered'}
                         onclick={() => onpick(answer.id)}
                 >
@@ -204,3 +206,4 @@
         }
     }
 </style>
+ 

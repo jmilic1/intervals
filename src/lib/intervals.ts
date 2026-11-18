@@ -1,3 +1,4 @@
+
 // The interval data the UI is built from.
 // Families are what the filter buttons turn on and off.
 // Answers are the buttons the user picks from after hearing an interval.
@@ -69,3 +70,35 @@ export interface Feedback {
 export function answerName(id: AnswerId): string {
     return ANSWERS.find((a) => a.id === id)?.name ?? id;
 }
+
+// ---------- Compare two ----------
+// Pairs of intervals that sound alike. In compare mode only the pair is
+// played: one interval most of the time, and the "rare" one now and then,
+// so you learn to hear when the interval changes.
+
+export type PairId = 'seconds' | 'thirds' | 'fourth-fifth' | 'sixths' | 'sevenths';
+
+export interface Pair {
+    id: PairId;
+    label: string;
+    answers: [AnswerId, AnswerId];
+}
+
+export const PAIRS: Pair[] = [
+    { id: 'seconds', label: 'Minor / major second', answers: ['m2', 'M2'] },
+    { id: 'thirds', label: 'Minor / major third', answers: ['m3', 'M3'] },
+    { id: 'fourth-fifth', label: 'Perfect fourth / fifth', answers: ['P4', 'P5'] },
+    { id: 'sixths', label: 'Minor / major sixth', answers: ['m6', 'M6'] },
+    { id: 'sevenths', label: 'Minor / major seventh', answers: ['m7', 'M7'] },
+];
+
+/** The rare interval comes up 1 time for every 5 times of the other one,
+ *  so 1 in 6 questions. */
+export const RARE_CHANCE = 1 / 6;
+
+/** Picks the interval for one question in compare mode. */
+export function pickFromPair(pair: Pair, rare: AnswerId, random: () => number = Math.random): AnswerId {
+    const common = pair.answers[0] === rare ? pair.answers[1] : pair.answers[0];
+    return random() < RARE_CHANCE ? rare : common;
+}
+ 

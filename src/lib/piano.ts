@@ -1,3 +1,4 @@
+
 // Plays piano notes from the recordings in src/assets/piano.
 //
 // File names look like "Ds5vH.wav": the note (s = sharp, so Ds = D#), its
@@ -35,6 +36,11 @@ export function playbackRate(note: number, recorded: number): number {
     return 2 ** ((note - recorded) / 12);
 }
 
+/** The note's pitch in Hz, in standard tuning (A4 = 440 Hz). */
+export function frequency(midi: number): number {
+    return 440 * 2 ** ((midi - 69) / 12);
+}
+
 // ---------- Settings ----------
 
 const NOTE_LENGTH = 1.4; // seconds each note rings before fading out
@@ -51,22 +57,27 @@ const files = import.meta.glob('../assets/piano/*.wav', {
     import: 'default',
 }) as Record<string, string>;
 
-// MIDI number -> URL of its vH recording. vL files are skipped.
-const recordings = new Map<number, string>();
+// MIDI number -> its vH recording: the file name (shown in the debug panel)
+// and the URL to load it from. vL files are skipped.
+const recordings = new Map<number, { file: string; url: string }>();
 for (const [path, url] of Object.entries(files)) {
     // "Ds5vH.wav" -> letter D, sharp, octave 5
     const match = /([A-G])(s?)(\d)vH\.wav$/.exec(path);
     if (!match) continue;
-    const [, letter, sharp, octave] = match;
-    recordings.set(noteToMidi(letter + (sharp ? '#' : '') + octave), url);
+    const [file, letter, sharp, octave] = match;
+    recordings.set(noteToMidi(letter + (sharp ? '#' : '') + octave), { file, url });
 }
 
 /** MIDI numbers of every note with a vH recording, low to high. */
 export const RECORDED_NOTES = [...recordings.keys()].sort((a, b) => a - b);
 
-/** The vH recordings in octave 5 (C4, D#4, F#4, A4, B4), used as the
- *  bottom note of each interval. */
-export const ROOT_NOTES = RECORDED_NOTES.filter((midi) => midiToNote(midi).endsWith('4'));
+/** Which octave the bottom note of each interval comes from. */
+const ROOT_OCTAVE = 4;
+
+/** All 12 notes of ROOT_OCTAVE (for octave 4: C4 up to B4), used as the
+ *  bottom note of each interval. Notes without their own recording are
+ *  made from the nearest one, the same way as any other note. */
+export const ROOT_NOTES = Array.from({ length: 12 }, (_, i) => (ROOT_OCTAVE + 1) * 12 + i);
 
 /** The vH recording closest to `note`. That's the one we pitch-shift.
  *  Notes that only have a vL recording (like C4) get a neighbor's vH
@@ -77,6 +88,39 @@ export function nearestRecording(note: number): number {
         if (Math.abs(recorded - note) < Math.abs(best - note)) best = recorded;
     }
     return best;
+}
+
+/** Everything about how one note gets played: which recording it comes
+ *  from and how much that recording is sped up or slowed down. Playback
+ *  and the debug panel both use this, so the panel always shows exactly
+ *  what was played. */
+export interface NoteSource {
+    note: number; // MIDI number of the note we want
+    name: string; // e.g. "E5"
+    frequency: number; // Hz
+    file: string; // recording used, e.g. "Ds5vH.wav"
+    recorded: number; // MIDI number of that recording
+    recordedName: string; // e.g. "D#5"
+    recordedFrequency: number; // Hz
+    shift: number; // semitones from the recording to the note (0 = the recording itself)
+    rate: number; // playback speed: 2^(shift/12)
+}
+
+/** How `note` will be played, or null if there are no recordings at all. */
+export function noteSource(note: number): NoteSource | null {
+    if (RECORDED_NOTES.length === 0) return null;
+    const recorded = nearestRecording(note);
+    return {
+        note,
+        name: midiToNote(note),
+        frequency: frequency(note),
+        file: recordings.get(recorded)!.file,
+        recorded,
+        recordedName: midiToNote(recorded),
+        recordedFrequency: frequency(recorded),
+        shift: note - recorded,
+        rate: playbackRate(note, recorded),
+    };
 }
 
 // ---------- Web Audio ----------
@@ -102,8 +146,12 @@ const buffers = new Map<number, Promise<AudioBuffer>>();
 function load(recorded: number): Promise<AudioBuffer> {
     let buffer = buffers.get(recorded);
     if (!buffer) {
-        buffer = fetch(recordings.get(recorded)!)
-            .then((response) => response.arrayBuffer())
+        const { file, url } = recordings.get(recorded)!;
+        buffer = fetch(url)
+            .then((response) => {
+                if (!response.ok) throw new Error(`Couldn't download ${file} (HTTP ${response.status})`);
+                return response.arrayBuffer();
+            })
             .then((data) => audio().decodeAudioData(data))
             .catch((error) => {
                 buffers.delete(recorded); // allow a retry next time
@@ -125,11 +173,11 @@ export function preload(from: number, to: number): void {
 // Notes that are currently sounding, so a new interval can silence them.
 let sounding: { source: AudioBufferSourceNode; gain: GainNode }[] = [];
 
-function playNote(note: number, when: number, recorded: number, buffer: AudioBuffer) {
+function playNote(note: NoteSource, when: number, buffer: AudioBuffer) {
     const ctx = audio();
     const source = ctx.createBufferSource();
     source.buffer = buffer;
-    source.playbackRate.value = playbackRate(note, recorded);
+    source.playbackRate.value = note.rate;
 
     // Let the note ring, then fade it out smoothly. Cutting it off
     // abruptly would make a click.
@@ -165,25 +213,27 @@ export function stopAll(): void {
     sounding = [];
 }
 
-/** Play `bottom`, then `top` (MIDI numbers), one after the other. */
-export async function playInterval(bottom: number, top: number): Promise<void> {
-    if (RECORDED_NOTES.length === 0) {
-        console.warn('No piano recordings found in src/assets/piano');
-        return;
-    }
+/** Play `bottom`, then `top` (MIDI numbers), one after the other.
+ *  Resolves to true once both notes are playing, or false if it was
+ *  cancelled (by stopAll or a newer interval) before it could start. */
+export async function playInterval(bottom: number, top: number): Promise<boolean> {
+    const low = noteSource(bottom);
+    const high = noteSource(top);
+    if (!low || !high) throw new Error('No piano recordings found in src/assets/piano');
+
     const ctx = audio();
     const request = ++latest;
     if (ctx.state !== 'running') await ctx.resume();
 
-    const bottomRecording = nearestRecording(bottom);
-    const topRecording = nearestRecording(top);
-    const [bottomBuffer, topBuffer] = await Promise.all([load(bottomRecording), load(topRecording)]);
+    const [lowBuffer, highBuffer] = await Promise.all([load(low.recorded), load(high.recorded)]);
 
     // If another interval was requested while these were loading, let that one play instead.
-    if (request !== latest) return;
+    if (request !== latest) return false;
 
     stopAll();
     const start = ctx.currentTime + 0.05;
-    playNote(bottom, start, bottomRecording, bottomBuffer);
-    playNote(top, start + NOTE_GAP, topRecording, topBuffer);
+    playNote(low, start, lowBuffer);
+    playNote(high, start + NOTE_GAP, highBuffer);
+    return true;
 }
+ 
