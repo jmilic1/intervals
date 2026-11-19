@@ -103,9 +103,9 @@ export const PAIRS: Pair[] = [
     { id: 'sevenths', label: 'Minor / major seventh', answers: ['m7', 'M7'] },
 ];
 
-/** The rare interval comes up 1 time for every 5 times of the other one,
+/** The rare interval comes up 1 time for every 4 times of the other one,
  *  so 1 in 6 questions. */
-export const RARE_CHANCE = 1 / 6;
+export const RARE_CHANCE = 1 / 5;
 
 /** Picks the interval for one question in compare mode. */
 export function pickFromPair(pair: Pair, rare: AnswerId, random: () => number = Math.random): AnswerId {
