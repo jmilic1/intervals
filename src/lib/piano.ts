@@ -46,6 +46,9 @@ export function frequency(midi: number): number {
 const NOTE_LENGTH = 1.4; // seconds each note rings before fading out
 const NOTE_GAP = 0.8; // seconds between the first and second note
 const VOLUME = 0.7; // 0 to 1, leaves headroom when both notes overlap
+// Two notes starting at the same moment (a harmonic interval) add up to a
+// louder sound, so each one plays at this level to avoid distortion.
+const HARMONIC_LEVEL = 0.7;
 
 // ---------- The recordings ----------
 
@@ -74,9 +77,10 @@ export const RECORDED_NOTES = [...recordings.keys()].sort((a, b) => a - b);
 /** Which octave the bottom note of each interval comes from. */
 const ROOT_OCTAVE = 4;
 
-/** All 12 notes of ROOT_OCTAVE (for octave 4: C4 up to B4), used as the
- *  bottom note of each interval. Notes without their own recording are
- *  made from the nearest one, the same way as any other note. */
+/** All 12 notes of ROOT_OCTAVE (for octave 4: C4 up to B4). Each question
+ *  picks one: the bottom note for ascending and harmonic intervals, the top
+ *  note for descending ones. Notes without their own recording are made
+ *  from the nearest one, the same way as any other note. */
 export const ROOT_NOTES = Array.from({ length: 12 }, (_, i) => (ROOT_OCTAVE + 1) * 12 + i);
 
 /** The vH recording closest to `note`. That's the one we pitch-shift.
@@ -173,16 +177,17 @@ export function preload(from: number, to: number): void {
 // Notes that are currently sounding, so a new interval can silence them.
 let sounding: { source: AudioBufferSourceNode; gain: GainNode }[] = [];
 
-function playNote(note: NoteSource, when: number, buffer: AudioBuffer) {
+function playNote(note: NoteSource, when: number, buffer: AudioBuffer, level = 1) {
     const ctx = audio();
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.playbackRate.value = note.rate;
 
-    // Let the note ring, then fade it out smoothly. Cutting it off
-    // abruptly would make a click.
+    // Let the note ring at `level`, then fade it out smoothly. Cutting it
+    // off abruptly would make a click.
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(1, when + NOTE_LENGTH);
+    gain.gain.value = level;
+    gain.gain.setValueAtTime(level, when + NOTE_LENGTH);
     gain.gain.setTargetAtTime(0, when + NOTE_LENGTH, 0.2);
 
     source.connect(gain).connect(output);
@@ -213,27 +218,29 @@ export function stopAll(): void {
     sounding = [];
 }
 
-/** Play `bottom`, then `top` (MIDI numbers), one after the other.
- *  Resolves to true once both notes are playing, or false if it was
+/** Play two notes (MIDI numbers): `first`, then `second` a moment later,
+ *  or both at the same moment when `together` is true (a harmonic interval).
+ *  Resolves to true once the notes are playing, or false if it was
  *  cancelled (by stopAll or a newer interval) before it could start. */
-export async function playInterval(bottom: number, top: number): Promise<boolean> {
-    const low = noteSource(bottom);
-    const high = noteSource(top);
-    if (!low || !high) throw new Error('No piano recordings found in src/assets/piano');
+export async function playInterval(first: number, second: number, together = false): Promise<boolean> {
+    const one = noteSource(first);
+    const two = noteSource(second);
+    if (!one || !two) throw new Error('No piano recordings found in src/assets/piano');
 
     const ctx = audio();
     const request = ++latest;
     if (ctx.state !== 'running') await ctx.resume();
 
-    const [lowBuffer, highBuffer] = await Promise.all([load(low.recorded), load(high.recorded)]);
+    const [oneBuffer, twoBuffer] = await Promise.all([load(one.recorded), load(two.recorded)]);
 
     // If another interval was requested while these were loading, let that one play instead.
     if (request !== latest) return false;
 
     stopAll();
     const start = ctx.currentTime + 0.05;
-    playNote(low, start, lowBuffer);
-    playNote(high, start + NOTE_GAP, highBuffer);
+    const level = together ? HARMONIC_LEVEL : 1;
+    playNote(one, start, oneBuffer, level);
+    playNote(two, together ? start : start + NOTE_GAP, twoBuffer, level);
     return true;
 }
  

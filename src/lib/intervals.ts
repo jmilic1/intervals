@@ -60,6 +60,17 @@ export const ANSWERS: Answer[] = [
     { id: 'P8', name: 'Octave', semitones: 12, family: 'octave' },
 ];
 
+// How the two notes of an interval are played.
+// Melodic: one after the other, going up (ascending) or down (descending).
+// Harmonic: both at the same time.
+export type Category = 'ascending' | 'descending' | 'harmonic';
+
+export const CATEGORIES: { id: Category; label: string }[] = [
+    { id: 'ascending', label: 'Melodic ascending' },
+    { id: 'descending', label: 'Melodic descending' },
+    { id: 'harmonic', label: 'Harmonic' },
+];
+
 // What the user picked and what the right answer was.
 // The answer buttons use this to decide which ones flash and in which color.
 export interface Feedback {

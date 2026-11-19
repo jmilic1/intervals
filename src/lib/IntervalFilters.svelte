@@ -3,16 +3,20 @@
     import { scale } from 'svelte/transition';
     import { prefersReducedMotion } from 'svelte/motion';
     import {
+        CATEGORIES,
         FAMILIES,
         PAIRS,
         RARE_CHANCE,
         answerName,
         type AnswerId,
+        type Category,
         type FamilyId,
         type PairId,
     } from './intervals';
 
     interface Props {
+        category: Category; // melodic ascending, melodic descending or harmonic
+        oncategory: (category: Category) => void;
         enabled: Record<FamilyId, boolean>;
         pair: PairId | null; // compare mode: the active pair, or null when it's off
         rare: AnswerId; // compare mode: which interval of the pair is the rare one
@@ -22,7 +26,7 @@
         oncompare: (pair: PairId, rare: AnswerId) => void;
     }
 
-    let { enabled, pair, rare, ontoggle, oncompare }: Props = $props();
+    let { category, oncategory, enabled, pair, rare, ontoggle, oncompare }: Props = $props();
 
     // "1 in 6", from RARE_CHANCE, for the tooltips
     const rareOdds = `1 in ${Math.round(1 / RARE_CHANCE)}`;
@@ -93,6 +97,22 @@
                 in:scale={{ start: 0.35, duration: openMs }}
                 out:scale={{ start: 0.35, duration: closeMs }}
         >
+            <!-- How the notes are played. Exactly one is always on. -->
+            <div class="group">
+                <p class="group-label" id="category-label">Category</p>
+                <div class="segmented category" role="group" aria-labelledby="category-label">
+                    {#each CATEGORIES as c (c.id)}
+                        <button
+                                type="button"
+                                aria-pressed={category === c.id}
+                                onclick={() => oncategory(c.id)}
+                        >
+                            {c.label}
+                        </button>
+                    {/each}
+                </div>
+            </div>
+
             <!-- Regular filters: any mix of intervals. -->
             <div class="group">
                 <p class="group-label" id="families-label">Intervals</p>
@@ -276,19 +296,28 @@
         row-gap: 8px;
     }
 
-    .segmented {
+    .switches .segmented {
         display: grid;
         grid-template-columns: subgrid;
         grid-column: span 2;
     }
 
-    /* Off: white with grey text. The highlighted side (the rare interval)
-       is filled with ink. */
+    /* The category switch: three parts side by side. On a narrow screen
+       the labels wrap onto two lines instead of overflowing. */
+    .category {
+        display: grid;
+        grid-template-columns: repeat(3, auto);
+        justify-content: start;
+    }
+
+    /* Joined buttons (two-way and three-way switches). Off: white with grey
+       text. The highlighted part is filled with ink. */
     .segmented button {
         padding: 8px 12px 7px;
         background: var(--key);
         color: var(--ink-soft);
         border: 1px solid var(--item-border);
+        border-radius: 0;
         font: inherit;
         font-size: 0.9375rem;
         line-height: 1;
@@ -297,12 +326,21 @@
         cursor: pointer;
     }
 
+    /* After the general rule above, so it wins: category labels may wrap. */
+    .category button {
+        white-space: normal;
+        line-height: 1.15;
+    }
+
+    .segmented button + button {
+        margin-left: -1px; /* neighbors share the border between them */
+    }
+
     .segmented button:first-child {
         border-radius: 5px 0 0 5px;
     }
 
     .segmented button:last-child {
-        margin-left: -1px; /* share the border in the middle */
         border-radius: 0 5px 5px 0;
     }
 

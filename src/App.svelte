@@ -9,6 +9,7 @@
     PAIRS,
     pickFromPair,
     type AnswerId,
+    type Category,
     type FamilyId,
     type Feedback,
     type PairId,
@@ -18,13 +19,19 @@
   type Phase = 'idle' | 'asking' | 'answered';
 
   // The interval currently being asked. Notes are MIDI numbers (C4 = 60).
+  // bottom is always the lower note and top the higher one, whatever order
+  // they're played in.
   interface Question {
     answer: AnswerId;
     bottom: number;
     top: number;
+    category: Category;
     // Compare mode only: whether this is the rare interval of the pair.
     rare?: boolean;
   }
+
+  // How the notes are played: melodic ascending, melodic descending or harmonic.
+  let category = $state<Category>('ascending');
 
   // Every family starts switched on.
   let enabled = $state(
@@ -57,11 +64,16 @@
   let soundStatus = $state('Nothing played yet');
   let playCount = 0;
 
-  async function play(bottom: number, top: number) {
+  // Ascending: lower note, then higher. Descending: higher, then lower.
+  // Harmonic: both at once.
+  async function play(q: Question) {
     const id = ++playCount;
     soundStatus = 'Loading recordings…';
     try {
-      const played = await playInterval(bottom, top);
+      const played =
+              q.category === 'descending'
+                      ? await playInterval(q.top, q.bottom)
+                      : await playInterval(q.bottom, q.top, q.category === 'harmonic');
       if (id === playCount) soundStatus = played ? 'Played' : 'Stopped before it started';
     } catch (error) {
       console.error(error);
@@ -112,17 +124,25 @@
     forgetQuestion();
   }
 
+  function chooseCategory(next: Category) {
+    if (next === category) return;
+    category = next;
+    forgetQuestion();
+  }
+
   function randomItem<T>(items: T[]): T {
     return items[Math.floor(Math.random() * items.length)];
   }
 
-  // The last interval and bottom note that were asked. Kept even when a
-  // filter change forgets the question, so the very next one still differs.
-  let previous: { answer: AnswerId; bottom: number } | null = null;
+  // The last interval, starting note and category that were asked. Kept
+  // even when a filter change forgets the question, so the very next one
+  // still differs.
+  let previous: { answer: AnswerId; first: number; category: Category } | null = null;
 
   // Picks the interval (in compare mode: the rare one 1 in 6 times, otherwise
-  // any allowed interval) and a random bottom note from the root octave
-  // (see ROOT_OCTAVE in piano.ts), then plays them going up.
+  // any allowed interval) and a random first note from the root octave (see
+  // ROOT_OCTAVE in piano.ts). Ascending and harmonic go up from that note;
+  // descending goes down from it, so its first note is the higher one.
   function nextQuestion() {
     const id = activePair ? pickFromPair(activePair, rare) : randomItem(allowed);
     const answer = ANSWERS.find((a) => a.id === id)!;
@@ -131,30 +151,35 @@
     // interval is the same as last time, start it on a different note.
     // The interval itself is still picked freely, so the 1-in-6 odds in
     // compare mode don't change.
+    const repeat = previous?.answer === id && previous.category === category;
     const notes =
-            previous?.answer === id && ROOT_NOTES.length > 1
-                    ? ROOT_NOTES.filter((note) => note !== previous!.bottom)
-                    : ROOT_NOTES;
-    const bottom = randomItem(notes);
-    previous = { answer: id, bottom };
+            repeat && ROOT_NOTES.length > 1 ? ROOT_NOTES.filter((note) => note !== previous!.first) : ROOT_NOTES;
+    const first = randomItem(notes);
+    previous = { answer: id, first, category };
 
+    const descending = category === 'descending';
     question = {
       answer: answer.id,
-      bottom,
-      top: bottom + answer.semitones,
+      bottom: descending ? first - answer.semitones : first,
+      top: descending ? first : first + answer.semitones,
+      category,
       rare: activePair ? answer.id === rare : undefined,
     };
     feedback = null;
     phase = 'asking';
 
-    play(question.bottom, question.top);
-    // Fetch the rest of the recordings in the background (up to an octave
-    // above the highest bottom note), so the next questions play right away.
-    preload(ROOT_NOTES[0], ROOT_NOTES[ROOT_NOTES.length - 1] + 12);
+    play(question);
+    // Fetch the rest of the recordings this category can need in the
+    // background (an octave above or below the root octave), so the next
+    // questions play right away.
+    const lowest = ROOT_NOTES[0];
+    const highest = ROOT_NOTES[ROOT_NOTES.length - 1];
+    if (descending) preload(lowest - 12, highest);
+    else preload(lowest, highest + 12);
   }
 
   function replay() {
-    if (question) play(question.bottom, question.top);
+    if (question) play(question);
   }
 
   function pick(id: AnswerId) {
@@ -178,9 +203,11 @@
   <!-- Filter on the left, then Start (or Replay / Next interval) beside it. -->
   <div class="toolbar">
     <IntervalFilters
+            {category}
             {enabled}
             {pair}
             {rare}
+            oncategory={chooseCategory}
             ontoggle={toggleFamily}
             onsetall={setAll}
             oncompare={chooseCompare}

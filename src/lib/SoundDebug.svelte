@@ -1,12 +1,18 @@
 
 <script lang="ts">
-    import { ANSWERS, RARE_CHANCE, type AnswerId } from './intervals';
+    import { ANSWERS, CATEGORIES, RARE_CHANCE, type AnswerId, type Category } from './intervals';
     import { RECORDED_NOTES, noteSource } from './piano';
 
     interface Props {
         // The current question, or null when there isn't one.
         // rare is only set in compare mode.
-        question: { answer: AnswerId; bottom: number; top: number; rare?: boolean } | null;
+        question: {
+            answer: AnswerId;
+            bottom: number;
+            top: number;
+            category: Category;
+            rare?: boolean;
+        } | null;
         // What happened the last time a sound was played.
         status: string;
     }
@@ -26,6 +32,15 @@
             : [],
     );
 
+    // "Melodic descending: higher note first, then lower" etc.
+    const order = $derived.by(() => {
+        if (!question) return '';
+        const label = CATEGORIES.find((c) => c.id === question.category)?.label;
+        if (question.category === 'descending') return `${label}: higher note first, then lower`;
+        if (question.category === 'harmonic') return `${label}: both notes at the same time`;
+        return `${label}: lower note first, then higher`;
+    });
+
     // In compare mode: "1 in 6" for the rare interval, "5 in 6" for the other.
     const odds = Math.round(1 / RARE_CHANCE);
 
@@ -42,7 +57,8 @@
         <dt>Interval</dt>
         <dd>
             {#if answer}
-                <p><strong>{answer.name}</strong> ({answer.id}), {semitones(answer.semitones)} up</p>
+                <p><strong>{answer.name}</strong> ({answer.id}), {semitones(answer.semitones)}</p>
+                <p>{order}</p>
                 {#if question?.rare === true}
                     <p>Compare mode: the rare one, chosen 1 in {odds} times</p>
                 {:else if question?.rare === false}
