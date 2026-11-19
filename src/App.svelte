@@ -163,6 +163,14 @@
     phase = 'answered';
   }
 
+  // The green/red flash on the picked answer has finished: play the next
+  // interval straight away. If the question was cleared during the flash
+  // (a filter change) or re(Play) already moved on, the flash never
+  // finishes, so this doesn't run.
+  function flashDone() {
+    if (phase === 'answered') nextQuestion();
+  }
+
 </script>
 
 <main class="app">
@@ -201,7 +209,7 @@
   <section class="trainer" aria-label="Practice">
     <p class="status" aria-live="polite">{status}</p>
 
-    <AnswerPad {allowed} {phase} {feedback} onpick={pick} />
+    <AnswerPad {allowed} {phase} {feedback} onpick={pick} onflashend={flashDone} />
   </section>
 
   {#if debug}

@@ -8,9 +8,11 @@
         phase: 'idle' | 'asking' | 'answered';
         feedback: Feedback | null;
         onpick: (id: AnswerId) => void;
+        // Called when the flash on the picked button has finished.
+        onflashend: () => void;
     }
 
-    let { allowed, phase, feedback, onpick }: Props = $props();
+    let { allowed, phase, feedback, onpick, onflashend }: Props = $props();
 
     // Laid out 5 / 3 / 5. The middle row holds the fourth, tritone and fifth,
     // and the tritone (6 semitones) lands in the exact center, just like it
@@ -38,6 +40,11 @@
                         disabled={phase === 'idle' || !allowed.includes(answer.id)}
                         aria-disabled={phase === 'answered'}
                         onclick={() => onpick(answer.id)}
+                        onanimationend={() => {
+                            // Only the picked button reports, so a wrong answer
+                            // (two buttons flashing) still counts once.
+                            if (answer.id === feedback?.picked) onflashend();
+                        }}
                 >
                     <span class="name">{answer.name}</span>
                     <!-- Shown above the button on hover (or keyboard focus). -->
