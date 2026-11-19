@@ -104,7 +104,7 @@ export const PAIRS: Pair[] = [
 ];
 
 /** The rare interval comes up 1 time for every 4 times of the other one,
- *  so 1 in 6 questions. */
+ *  so 1 in 5 questions. */
 export const RARE_CHANCE = 1 / 5;
 
 /** Picks the interval for one question in compare mode. */
