@@ -32,7 +32,7 @@
             : [],
     );
 
-    // "Melodic descending: higher note first, then lower" etc.
+    // "Descending: higher note first, then lower" etc.
     const order = $derived.by(() => {
         if (!question) return '';
         const label = CATEGORIES.find((c) => c.id === question.category)?.label;

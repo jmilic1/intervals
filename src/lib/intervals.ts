@@ -66,8 +66,8 @@ export const ANSWERS: Answer[] = [
 export type Category = 'ascending' | 'descending' | 'harmonic';
 
 export const CATEGORIES: { id: Category; label: string }[] = [
-    { id: 'ascending', label: 'Melodic ascending' },
-    { id: 'descending', label: 'Melodic descending' },
+    { id: 'ascending', label: 'Ascending' },
+    { id: 'descending', label: 'Descending' },
     { id: 'harmonic', label: 'Harmonic' },
 ];
 
