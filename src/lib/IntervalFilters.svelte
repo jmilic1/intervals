@@ -99,8 +99,7 @@
         >
             <!-- How the notes are played. Exactly one is always on. -->
             <div class="group">
-                <p class="group-label" id="category-label">Category</p>
-                <div class="segmented category" role="group" aria-labelledby="category-label">
+                <div class="segmented category" role="group" aria-label="Category">
                     {#each CATEGORIES as c (c.id)}
                         <button
                                 type="button"
@@ -115,8 +114,7 @@
 
             <!-- Regular filters: any mix of intervals. -->
             <div class="group">
-                <p class="group-label" id="families-label">Intervals</p>
-                <div class="chips" role="group" aria-labelledby="families-label">
+                <div class="chips" role="group" aria-label="Intervals">
                     {#each FAMILIES as family (family.id)}
                         <button
                                 type="button"
